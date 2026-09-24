@@ -29,9 +29,121 @@
   let state = load() || {
     items: ["Red", "Yellow", "Blue", "Circle", "Square", "Triangle"].map((label) => ({ label, weight: 50 })),
     history: [],
+    muted: false,
   };
   let rotation = 0;
   let spinning = false;
+
+  // ---------- sound (synthesised, no audio files) ----------
+
+  const sound = (() => {
+    let ctx = null;
+    let master = null;
+    let noise = null;
+    let lastTick = 0;
+
+    function ensure() {
+      if (state.muted) return null;
+      try {
+        if (!ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          ctx = new AC();
+          master = ctx.createGain();
+          master.gain.value = 0.7;
+          master.connect(ctx.destination);
+          noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+          const d = noise.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        }
+        if (ctx.state === "suspended") ctx.resume();
+        return ctx;
+      } catch {
+        return null;
+      }
+    }
+
+    function envGain(t, peak, decay) {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+      g.connect(master);
+      return g;
+    }
+
+    // the classic "clack" of the flapper hitting a peg
+    function tick() {
+      if (!ensure()) return;
+      const t = ctx.currentTime;
+      if (t - lastTick < 0.028) return; // at full speed the clicks blur into a rattle
+      lastTick = t;
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 1900 + Math.random() * 600;
+      bp.Q.value = 2.2;
+      src.connect(bp).connect(envGain(t, 0.9, 0.035));
+      src.start(t, Math.random() * 0.5, 0.05);
+
+      const body = ctx.createOscillator();
+      body.type = "triangle";
+      body.frequency.setValueAtTime(900, t);
+      body.frequency.exponentialRampToValueAtTime(380, t + 0.03);
+      body.connect(envGain(t, 0.25, 0.04));
+      body.start(t);
+      body.stop(t + 0.05);
+    }
+
+    // air rushing as the wheel is flung
+    function whoosh() {
+      if (!ensure()) return;
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "bandpass";
+      lp.Q.value = 0.8;
+      lp.frequency.setValueAtTime(300, t);
+      lp.frequency.exponentialRampToValueAtTime(1600, t + 0.18);
+      lp.frequency.exponentialRampToValueAtTime(250, t + 0.7);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.28, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+      src.connect(lp).connect(g).connect(master);
+      src.start(t, 0, 0.8);
+    }
+
+    // a bright two-note bell when the result lands
+    function chime() {
+      if (!ensure()) return;
+      const t = ctx.currentTime + 0.05;
+      [[784, 0, 0.35], [1175, 0.11, 0.3], [2350, 0.11, 0.06]].forEach(([f, delay, peak]) => {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = f;
+        o.connect(envGain(t + delay, peak, 1.4));
+        o.start(t + delay);
+        o.stop(t + delay + 1.5);
+      });
+    }
+
+    return { tick, whoosh, chime, unlock: ensure };
+  })();
+
+  const soundBtn = $("sound");
+  function drawSound() {
+    soundBtn.textContent = state.muted ? "Sound off" : "Sound on";
+    soundBtn.setAttribute("aria-pressed", String(!state.muted));
+  }
+  soundBtn.addEventListener("click", () => {
+    state.muted = !state.muted;
+    save();
+    drawSound();
+    if (!state.muted) sound.tick();
+  });
 
   // ---------- persistence ----------
 
@@ -46,6 +158,7 @@
           .filter((i) => i && typeof i.label === "string")
           .map((i) => ({ label: i.label.slice(0, 40), weight: clamp(Number(i.weight) || 0, 0, 100) })),
         history: Array.isArray(data.history) ? data.history.slice(0, 8) : [],
+        muted: data.muted === true,
       };
     } catch {
       return null;
@@ -256,16 +369,47 @@
     const current = ((rotation % 360) + 360) % 360;
     const delta = (((-target - current) % 360) + 360) % 360;
     const turns = 5 + Math.floor(Math.random() * 3);
+    const startRotation = rotation;
     rotation += turns * 360 + delta;
 
     rotor.classList.add("spinning");
     rotor.style.transform = `rotate(${rotation}deg)`;
+
+    // follow the real (eased) angle so every click lines up with a peg passing the pointer
+    sound.unlock();
+    sound.whoosh();
+    const pointer = $("pointer");
+    let lastAngle = ((startRotation % 360) + 360) % 360;
+    let travelled = 0;
+    let lastPeg = Math.floor(startRotation / slice);
+    let raf = 0;
+    const follow = () => {
+      const m = getComputedStyle(rotor).transform;
+      if (m && m !== "none") {
+        const [a, b] = m.slice(m.indexOf("(") + 1).split(",").map(Number);
+        const angle = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+        travelled += (angle - lastAngle + 360) % 360;
+        lastAngle = angle;
+        const peg = Math.floor((startRotation + travelled) / slice);
+        if (peg > lastPeg) {
+          lastPeg = peg;
+          sound.tick();
+          pointer.classList.remove("tick");
+          void pointer.offsetWidth;
+          pointer.classList.add("tick");
+        }
+      }
+      raf = requestAnimationFrame(follow);
+    };
+    raf = requestAnimationFrame(follow);
 
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
       rotor.removeEventListener("transitionend", finish);
+      cancelAnimationFrame(raf);
+      sound.chime();
       spinning = false;
       spinBtn.disabled = false;
       hub.disabled = false;
@@ -338,4 +482,5 @@
   drawWheel();
   drawChoices();
   drawHistory();
+  drawSound();
 })();

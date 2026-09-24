@@ -129,6 +129,14 @@ h1 span { color: var(--red); }
   border-top: 40px solid var(--ink);
   z-index: 2;
   filter: drop-shadow(0 3px 0 var(--paper));
+  transform-origin: 50% 0;
+}
+/* the flapper kicks back each time a peg passes it */
+.pointer.tick { animation: flap .09s ease-out; }
+@keyframes flap {
+  0% { transform: translateX(-50%) rotate(0deg); }
+  40% { transform: translateX(-50%) rotate(-14deg); }
+  100% { transform: translateX(-50%) rotate(0deg); }
 }
 
 .hub {
@@ -188,7 +196,31 @@ h1 span { color: var(--red); }
   background: var(--yellow);
   border-bottom: var(--line) solid var(--ink);
   min-height: 118px;
+  position: relative;
 }
+.sound {
+  position: absolute;
+  top: 16px; right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  cursor: pointer;
+}
+.sound::before {
+  content: "";
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.sound[aria-pressed="false"]::before { background: transparent; border: 2px solid var(--ink); border-radius: 0; width: 6px; height: 6px; }
+.sound:hover { background: var(--ink); color: var(--paper); }
 .result-label, h2 {
   font-size: 12px;
   font-weight: 700;

@@ -23,7 +23,7 @@
   <main class="stage">
     <section class="wheel-col">
       <div class="wheel-frame">
-        <div class="pointer" aria-hidden="true"></div>
+        <div class="pointer" id="pointer" aria-hidden="true"></div>
         <div class="rotor" id="rotor">
           <svg id="wheel" viewBox="-100 -100 200 200" role="img" aria-label="Wheel of choices"></svg>
         </div>
@@ -36,6 +36,7 @@
 
       <div class="result" id="result" aria-live="polite">
         <span class="result-label">Result</span>
+        <button class="sound" id="sound" type="button" aria-pressed="true">Sound on</button>
         <span class="result-value" id="resultValue">—</span>
       </div>
 

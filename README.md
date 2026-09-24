@@ -6,7 +6,8 @@ Open `index.html` in a browser. It has no build step and no dependencies.
 
 - Add or remove choices (2–24) in the panel.
 - Press **Spin**, click the centre hub, or press **Space**.
-- Your choices, odds and the last 8 results are saved in `localStorage`.
+- Each peg that passes the pointer makes a click, and the pointer flicks back with it. A spin starts with a whoosh and ends with a chime. The sounds are made in the browser with the Web Audio API, so there are no audio files. Use the **Sound on/off** button in the result box to mute them.
+- Your choices, odds, sound setting and the last 8 results are saved in `localStorage`.
 
 ## The secret
 
